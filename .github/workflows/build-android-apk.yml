@@ -1,0 +1,66 @@
+# Builds a standalone, installable Android APK of the mobile app so the
+# self-signed-certificate fix can be tested on a real device.
+# The APK is uploaded as a workflow artifact (no Expo account needed):
+# assembleRelease bundles the JS in and is signed with the default debug
+# keystore, so it installs and runs without a Metro dev server.
+name: Build Android test APK
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - ci/android-test-apk
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/build-android-apk.yml"
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_NO_TELEMETRY: "1"
+      SENTRY_DISABLE_AUTO_UPLOAD: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Generate Prisma client
+        run: yarn prisma:generate
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - name: Expo prebuild (generate android project)
+        working-directory: apps/mobile
+        run: npx expo prebuild -p android --no-install
+
+      - name: Build release APK (JS bundled, debug-signed)
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkwarden-android-apk
+          path: apps/mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
