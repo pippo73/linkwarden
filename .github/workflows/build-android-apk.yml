@@ -64,15 +64,24 @@ jobs:
         run: npx expo prebuild -p android --no-install
 
       - name: Tune Gradle for a lean test build
-        # Give Gradle more heap/metaspace (the default OOMs on the 2-core
-        # runner) and disable R8 minification — it is pointless for a test
-        # APK, adds time, and the failure happened right after it in the
-        # packaging step.
+        # Packaging OOM'd in the APK zip compressor. Replace (not append) the
+        # jvmargs line so the larger heap is actually applied, serialize the
+        # packaging workers so parallel compressions don't add up, and disable
+        # R8 minify + PNG crunch (pointless and memory-heavy for a test APK).
+        # Print the effective RAM/config for the record.
         run: |
+          cd apps/mobile/android
+          sed -i 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g|' gradle.properties
           {
-            echo "org.gradle.jvmargs=-Xmx8192m -XX:MaxMetaspaceSize=2048m"
             echo "android.enableMinifyInReleaseBuilds=false"
-          } >> apps/mobile/android/gradle.properties
+            echo "android.enablePngCrunchInReleaseBuilds=false"
+            echo "org.gradle.workers.max=1"
+            echo "org.gradle.parallel=false"
+          } >> gradle.properties
+          echo "----- runner memory / effective gradle config -----"
+          free -h || true
+          nproc || true
+          grep -E 'jvmargs|workers|parallel|Minify|PngCrunch' gradle.properties
 
       - name: Build release APK (JS bundled, debug-signed)
         working-directory: apps/mobile/android
