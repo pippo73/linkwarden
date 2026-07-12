@@ -86,11 +86,11 @@ jobs:
       - name: Build release APK (JS bundled, debug-signed)
         working-directory: apps/mobile/android
         # Build only the :app module (not every library module) and skip the
-        # release "vital" lint. Build a single ABI (x86_64 = emulator; switch
-        # to arm64-v8a for a physical phone): packaging both ABIs' native libs
-        # at once OOM'd the APK splitter. Single ABI also halves build time.
-        # --stacktrace surfaces the real cause if packaging fails again.
-        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 -x lintVitalRelease --no-daemon --stacktrace
+        # release "vital" lint. Build a single ABI (arm64-v8a = physical
+        # phones; switch to x86_64 for an emulator): packaging both ABIs'
+        # native libs at once OOM'd the APK splitter. Single ABI also halves
+        # build time. --stacktrace surfaces the real cause if it fails again.
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a -x lintVitalRelease --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
