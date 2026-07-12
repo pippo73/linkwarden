@@ -70,19 +70,18 @@ jobs:
         # packaging step.
         run: |
           {
-            echo "org.gradle.jvmargs=-Xmx5120m -XX:MaxMetaspaceSize=1024m"
+            echo "org.gradle.jvmargs=-Xmx8192m -XX:MaxMetaspaceSize=2048m"
             echo "android.enableMinifyInReleaseBuilds=false"
           } >> apps/mobile/android/gradle.properties
 
       - name: Build release APK (JS bundled, debug-signed)
         working-directory: apps/mobile/android
         # Build only the :app module (not every library module) and skip the
-        # release "vital" lint — neither is needed for a test APK, and the
-        # library lint tasks are what exhausted memory before. Limit native
-        # compilation to the two ABIs we test on (arm64-v8a = phones,
-        # x86_64 = emulator) instead of all four to roughly halve build time.
+        # release "vital" lint. Build a single ABI (x86_64 = emulator; switch
+        # to arm64-v8a for a physical phone): packaging both ABIs' native libs
+        # at once OOM'd the APK splitter. Single ABI also halves build time.
         # --stacktrace surfaces the real cause if packaging fails again.
-        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64 -x lintVitalRelease --no-daemon --stacktrace
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 -x lintVitalRelease --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
