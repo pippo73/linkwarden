@@ -54,12 +54,19 @@ jobs:
         working-directory: apps/mobile
         run: npx expo prebuild -p android --no-install
 
+      - name: Raise Gradle JVM memory
+        # The default heap/metaspace OOMs on the 2-core runner; give Gradle
+        # room so the build does not die with "OutOfMemoryError: Metaspace".
+        run: echo "org.gradle.jvmargs=-Xmx5120m -XX:MaxMetaspaceSize=1024m" >> apps/mobile/android/gradle.properties
+
       - name: Build release APK (JS bundled, debug-signed)
         working-directory: apps/mobile/android
-        # Limit native compilation to the two ABIs we actually test on
-        # (arm64-v8a = physical phones, x86_64 = emulator) instead of all
-        # four, which roughly halves the native build time.
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64 --no-daemon
+        # Build only the :app module (not every library module) and skip the
+        # release "vital" lint — neither is needed for a test APK, and the
+        # library lint tasks are what exhausted memory before. Limit native
+        # compilation to the two ABIs we test on (arm64-v8a = phones,
+        # x86_64 = emulator) instead of all four to roughly halve build time.
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64 -x lintVitalRelease --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
