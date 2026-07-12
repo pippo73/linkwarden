@@ -25,6 +25,15 @@ jobs:
       EXPO_NO_TELEMETRY: "1"
       SENTRY_DISABLE_AUTO_UPLOAD: "true"
     steps:
+      - name: Free disk space
+        # The final packaging step can run out of disk on the runner once the
+        # SDK, NDK, two-ABI native objects and R8 output pile up. Remove large
+        # preinstalled toolchains we don't use to reclaim ~20 GB.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/powershell /usr/share/swift /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+          df -h /
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -54,10 +63,16 @@ jobs:
         working-directory: apps/mobile
         run: npx expo prebuild -p android --no-install
 
-      - name: Raise Gradle JVM memory
-        # The default heap/metaspace OOMs on the 2-core runner; give Gradle
-        # room so the build does not die with "OutOfMemoryError: Metaspace".
-        run: echo "org.gradle.jvmargs=-Xmx5120m -XX:MaxMetaspaceSize=1024m" >> apps/mobile/android/gradle.properties
+      - name: Tune Gradle for a lean test build
+        # Give Gradle more heap/metaspace (the default OOMs on the 2-core
+        # runner) and disable R8 minification — it is pointless for a test
+        # APK, adds time, and the failure happened right after it in the
+        # packaging step.
+        run: |
+          {
+            echo "org.gradle.jvmargs=-Xmx5120m -XX:MaxMetaspaceSize=1024m"
+            echo "android.enableMinifyInReleaseBuilds=false"
+          } >> apps/mobile/android/gradle.properties
 
       - name: Build release APK (JS bundled, debug-signed)
         working-directory: apps/mobile/android
@@ -66,7 +81,8 @@ jobs:
         # library lint tasks are what exhausted memory before. Limit native
         # compilation to the two ABIs we test on (arm64-v8a = phones,
         # x86_64 = emulator) instead of all four to roughly halve build time.
-        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64 -x lintVitalRelease --no-daemon
+        # --stacktrace surfaces the real cause if packaging fails again.
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64 -x lintVitalRelease --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
